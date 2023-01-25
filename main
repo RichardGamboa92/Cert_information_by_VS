@@ -1,0 +1,108 @@
+
+#!/bin/bash
+
+echo "***************************"
+echo "***************************"
+echo "***************************"
+echo "Starting"
+echo "***************************"
+echo "***************************"
+echo "***************************"
+
+while true; do
+
+echo "FQDN or IP?"
+read Temp
+VS=$(dig +short $Temp)
+echo ""
+echo ""
+echo "***************IP address: $VS********************"
+#echo Resuelto
+echo ""
+echo ""
+echo ""
+
+if [[ $Temp =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3\}$ ]]; then
+VS=$Temp
+#echo Was an IP.
+fi
+echo "Port?"
+read Port
+#echo Despues de dig y despues de check if IP.
+#echo $VS
+
+if [[ $VS =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3\}$ ]]; then
+
+F5s=/var/tmp/locate/ips
+
+while read F5s ; do
+#echo "-----------------------------------------------------------------------------------------"
+#echo "-----------------------------------------------------------------------------------------"
+#echo "-----------------------------------------------------------------------------------------"
+echo "Cheking BIG-IP: $F5s"
+echo "---------------------------------------------------------------------------------------------------------"
+Token=$(curl -skX POST https://$F5s/mgmt/shared/authn/login -d '{"username":"rigamboa","password":"Welcome2LPL!", "loginProviderName":"tmos"}' | jq -r .token.token)
+#echo $Token
+Data=$(curl -ks -H "X-F5-Auth-Token: $Token" https://$F5s/mgmt/tm/ltm/virtual?options=destination | jq '.items[] | select(.destination|contains('\"$VS:$Port\"'))' | jq .)
+echo ""
+echo ""
+echo "-----------------Information of the VS:----------------"
+echo $Data | jq .
+echo "*****************Information of the VS*****************"
+echo ""
+echo ""
+
+if [[ ! -z "$Data" ]]; then
+
+
+
+clientSslProfile_URL=$(curl -ks -H "X-F5-Auth-Token: $Token" https://$F5s/mgmt/tm/ltm/virtual?expandSubcollections=true\&\$select=name,destination,profilesReference | jq '.items[] | select(.destination|contains('\"$VS:$Port\"'))' | jq '.profilesReference.items[] | select(.nameReference.link|contains("client-ssl"))' | jq -r .nameReference.link)
+#echo "clientSslProfile_URL----------------"
+#echo $clientSslProfile_URL
+#echo "clientSslProfile_URL----------------"
+pre_cert_URL=$(echo "${clientSslProfile_URL/localhost/$F5s}")
+#echo "pre_cert_URL----------------"
+#echo $pre_cert_URL
+#echo "pre_cert_URL----------------"
+cert_URL=$(curl -sk -H "X-F5-Auth-Token: $Token" $pre_cert_URL | jq -r .certReference.link)
+#echo ""
+#echo ""
+#echo "cert_URL----------------"
+#echo $cert_URL
+#echo "cert_URL----------------"
+#echo ""
+#echo ""
+x509_info_URL=$(echo "${cert_URL/localhost/$F5s}")
+#echo ""
+#echo ""
+#echo "x509_info_URL----------------"
+#echo $x509_info_URL
+#echo "x509_info_URL----------------"
+#echo ""
+#echo ""
+echo ""
+echo ""
+echo "Information of ssl cert applied to the VS: $VS: "
+echo ""
+x509_info=$(curl -sk -H "X-F5-Auth-Token: $Token" $x509_info_URL\&\$select=name,fullPath,ertificateKeySize,expirationString,sourcePath,subject,subjectAlternativeName)
+echo $x509_info | jq .
+echo ""
+echo ""
+echo ""
+echo ""
+
+
+
+                echo "***********************************************************"
+                echo "***********************************************************"
+                echo "***********************************************************"
+                echo "******************** Is under BIG IP: $F5s ************************"
+                echo "***********************************************************"
+                echo "***********************************************************"
+                echo "***********************************************************"
+
+                break
+            fi
+done < $F5s
+fi
+done
